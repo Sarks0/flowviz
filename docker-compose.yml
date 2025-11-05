@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  flowviz:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flowviz:latest
+    container_name: flowviz-app
+    restart: unless-stopped
+
+    ports:
+      - "3001:3001"
+
+    environment:
+      # Node environment
+      - NODE_ENV=production
+      - PORT=3001
+
+      # API Keys (override with .env file or set directly)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}
+
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+
+      - DEFAULT_AI_PROVIDER=${DEFAULT_AI_PROVIDER:-anthropic}
+
+      # Security & CORS
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001}
+
+      # Size limits
+      - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-10mb}
+      - MAX_ARTICLE_SIZE=${MAX_ARTICLE_SIZE:-5242880}
+      - MAX_IMAGE_SIZE=${MAX_IMAGE_SIZE:-3145728}
+
+      # Rate limiting
+      - RATE_LIMIT_ARTICLES=${RATE_LIMIT_ARTICLES:-10}
+      - RATE_LIMIT_IMAGES=${RATE_LIMIT_IMAGES:-50}
+      - RATE_LIMIT_STREAMING=${RATE_LIMIT_STREAMING:-5}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    volumes:
+      # Persist logs across container restarts
+      - flowviz-logs:/app/logs
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+    networks:
+      - flowviz-network
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits (optional, adjust based on your server)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  flowviz-logs:
+    driver: local
+
+networks:
+  flowviz-network:
+    driver: bridge
