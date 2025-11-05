@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   ReactFlowProvider,
   BackgroundVariant,
   useNodesState,
@@ -28,6 +29,7 @@ import NodeDetailsPanel from './components/NodeDetailsPanel/NodeDetailsPanel';
 import FloatingConnectionLine from './edges/FloatingConnectionLine';
 import { useStoryMode } from './hooks/useStoryMode';
 import LoadingIndicator from '../../../shared/components/LoadingIndicator';
+import { useProviderConfig } from '../../app/hooks/useProviderConfig';
 
 export interface StreamingFlowVisualizationProps {
   url: string; // Can be URL or text content
@@ -56,7 +58,7 @@ export interface StreamingFlowVisualizationProps {
   storyModeSpeed?: number;
 }
 
-const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProps> = ({ 
+const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProps> = ({
   url,
   loadedFlow,
   onExportAvailable,
@@ -77,6 +79,9 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
+
+  // Get current provider/model selection
+  const { selectedProvider, selectedModel } = useProviderConfig();
   
   // Determine content type based on URL format
   const contentType = useMemo(() => {
@@ -216,11 +221,18 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
   useEffect(() => {
     if (loadedFlow) {
       console.log('📂 Loading saved flow with', loadedFlow.nodes.length, 'nodes and', loadedFlow.edges.length, 'edges');
-      setNodes(loadedFlow.nodes);
-      
-      // Apply current edge styling to loaded edges
+
+      // Re-apply smart handle positioning for loaded flows (in case they're old flows without handles)
+      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+        loadedFlow.nodes,
+        loadedFlow.edges
+      );
+
+      setNodes(layoutedNodes);
+
+      // Apply current edge styling to loaded edges with smart handles
       const edgeConfig = getEdgeConfig();
-      const styledEdges = loadedFlow.edges.map(edge => ({
+      const styledEdges = layoutedEdges.map(edge => ({
         ...edge,
         type: edgeConfig.type,
         style: edgeConfig.style
@@ -235,7 +247,7 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
       } else if (reactFlowInstance) {
         // Fit view if no viewport data
         setTimeout(() => {
-          reactFlowInstance.fitView({ duration: 800, padding: 0.1 });
+          reactFlowInstance.fitView({ duration: 800, padding: 0.1, maxZoom: 1.0 });
         }, 100);
       }
       
@@ -255,7 +267,7 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
       console.log('🚀 Starting streaming direct flow extraction...');
       
       streamingClientRef.current = new StreamingDirectFlowClient();
-      
+
       await streamingClientRef.current.extractDirectFlowStreaming(url, {
         onProgress: (stage, message) => {
           onProgress?.(stage, message);
@@ -337,11 +349,14 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
           onStreamingEnd?.(); // Notify parent that streaming has ended (even on error)
           onError?.(err); // Pass error to parent for snackbar display
         }
+      }, {
+        provider: selectedProvider,
+        model: selectedModel
       });
     };
 
     startStreaming();
-  }, [url]); // Only depend on URL to avoid re-runs
+  }, [url, selectedProvider, selectedModel]); // Depend on URL, provider, and model
 
   // Track when re-layout needed
   const [needsLayout, setNeedsLayout] = useState(false);
@@ -365,9 +380,9 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
   useEffect(() => {
     if (needsLayout && nodes.length > 0 && isStreaming) {
       console.log(`🎨 Applying layout to ${nodes.length} nodes, ${edges.length} edges`);
-      // Apply Dagre layout with side-node post-processing
+      // Apply Dagre layout with smart handle positioning
       const layouted = getLayoutedElements(nodes, edges);
-      
+
       // Update nodes with new positions and make them visible
       const layoutedNodesWithStyle = layouted.nodes.map(n => ({
         ...n,
@@ -376,9 +391,11 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
           transition: 'opacity 0.5s ease-in-out'
         }
       }));
-      
+
       setNodes(layoutedNodesWithStyle);
-      // Don't override edges here - they are managed by the streaming callbacks
+
+      // Update edges with smart handle IDs to avoid overlaps
+      setEdges(layouted.edges);
       
       // Keep the view centered on the graph during streaming
       if (reactFlowInstance) {
@@ -616,7 +633,7 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
         currentStepData,
         onResetView: () => {
           if (reactFlowInstance) {
-            reactFlowInstance.fitView({ duration: 800, padding: 0.1 });
+            reactFlowInstance.fitView({ duration: 800, padding: 0.1, maxZoom: 1.0 });
           }
         }
       });
@@ -668,7 +685,7 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
             storyControls.pauseStory();
             storyControls.resetStory();
             if (reactFlowInstance) {
-              reactFlowInstance.fitView({ duration: 800, padding: 0.1 });
+              reactFlowInstance.fitView({ duration: 800, padding: 0.1, maxZoom: 1.0 });
               showKeyIndicator('Fit View');
             }
             break;
@@ -879,6 +896,29 @@ const StreamingFlowVisualizationContent: React.FC<StreamingFlowVisualizationProp
               border: THEME.border.default,
               borderRadius: '8px'
             }}
+          />
+          <MiniMap
+            nodeColor={(node) => {
+              // Color nodes based on type for better visual distinction
+              switch (node.type) {
+                case 'action': return '#3b82f6'; // Blue for actions
+                case 'malware': return '#ef4444'; // Red for malware
+                case 'tool': return '#8b5cf6'; // Purple for tools
+                case 'asset': return '#10b981'; // Green for assets
+                case 'infrastructure': return '#f59e0b'; // Orange for infrastructure
+                case 'vulnerability': return '#ec4899'; // Pink for vulnerabilities
+                default: return '#6b7280'; // Gray for others
+              }
+            }}
+            nodeStrokeWidth={3}
+            zoomable
+            pannable
+            style={{
+              backgroundColor: THEME.background.secondary,
+              border: THEME.border.default,
+              borderRadius: '8px'
+            }}
+            maskColor="rgba(13, 17, 23, 0.8)"
           />
         </ReactFlow>
         

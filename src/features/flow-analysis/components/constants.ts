@@ -82,11 +82,11 @@ export const LABEL_BG_STYLES = {
 
 export const LAYOUT_CONFIG = {
   rankdir: 'TB', // Top-to-bottom layout
-  ranksep: 200,  // Increased spacing between ranks
-  nodesep: 150,  // Increased spacing between nodes in same rank
-  edgesep: 60,   // Increased spacing between edges
-  marginx: 80,   // Increased margin around graph
-  marginy: 80,   // Increased margin around graph
+  ranksep: 80,   // Vertical spacing between ranks (reduced from 200 for more compact flows)
+  nodesep: 60,   // Horizontal spacing between nodes in same rank (reduced from 150)
+  edgesep: 40,   // Spacing between edges (reduced from 60)
+  marginx: 40,   // Margin around graph (reduced from 80)
+  marginy: 40,   // Margin around graph (reduced from 80)
   nodeWidth: 220,
   nodeHeight: 130,
   paddingLeft: 25,
