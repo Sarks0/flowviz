@@ -1,12 +1,13 @@
 import { Node, Position } from 'reactflow';
 
 // Helper to get the position of the handle based on node position and type
+// Smart handle selection to avoid overlapping edges
 function getHandlePosition(
   nodeA: Node,
   nodeB: Node,
   sourceType?: string,
   targetType?: string
-): { source: Position; target: Position } {
+): { source: Position; target: Position; sourceHandleId: string; targetHandleId: string } {
   const centerA = {
     x: nodeA.position.x + (nodeA.width || 200) / 2,
     y: nodeA.position.y + (nodeA.height || 120) / 2,
@@ -17,12 +18,55 @@ function getHandlePosition(
     y: nodeB.position.y + (nodeB.height || 120) / 2,
   };
 
-  // For dagre layout, always use vertical connections (top/bottom)
-  // This ensures proper alignment with the hierarchical layout
-  if (centerA.y > centerB.y) {
-    return { source: Position.Top, target: Position.Bottom };
+  const dx = centerB.x - centerA.x;
+  const dy = centerB.y - centerA.y;
+
+  // Calculate absolute differences
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  // Determine primary direction based on which distance is greater
+  const isHorizontalPrimary = absDx > absDy;
+
+  // Smart handle selection based on relative positions
+  if (isHorizontalPrimary) {
+    // Horizontal connection is clearer
+    if (dx > 0) {
+      // B is to the right of A
+      return {
+        source: Position.Right,
+        target: Position.Left,
+        sourceHandleId: 'right-source',
+        targetHandleId: 'left-target'
+      };
+    } else {
+      // B is to the left of A
+      return {
+        source: Position.Left,
+        target: Position.Right,
+        sourceHandleId: 'left-source',
+        targetHandleId: 'right-target'
+      };
+    }
   } else {
-    return { source: Position.Bottom, target: Position.Top };
+    // Vertical connection is clearer (default for hierarchical layouts)
+    if (dy > 0) {
+      // B is below A
+      return {
+        source: Position.Bottom,
+        target: Position.Top,
+        sourceHandleId: 'bottom-source',
+        targetHandleId: 'top-target'
+      };
+    } else {
+      // B is above A
+      return {
+        source: Position.Top,
+        target: Position.Bottom,
+        sourceHandleId: 'top-source',
+        targetHandleId: 'bottom-target'
+      };
+    }
   }
 }
 
@@ -44,7 +88,12 @@ export function getEdgeParams(sourceNode: any, targetNode: any) {
     height: targetNode.height || 120,
   };
 
-  const { source: sourceHandlePos, target: targetHandlePos } = getHandlePosition(
+  const {
+    source: sourceHandlePos,
+    target: targetHandlePos,
+    sourceHandleId,
+    targetHandleId
+  } = getHandlePosition(
     sourceNodeData as Node,
     targetNodeData as Node,
     sourceNode.type,
@@ -76,10 +125,13 @@ export function getEdgeParams(sourceNode: any, targetNode: any) {
       sx = sourceX + sourceWidth / 2;
       sy = sourceY + sourceHeight;
       break;
-    default:
-      // Fallback to bottom for any unexpected case
-      sx = sourceX + sourceWidth / 2;
-      sy = sourceY + sourceHeight;
+    case Position.Left:
+      sx = sourceX;
+      sy = sourceY + sourceHeight / 2;
+      break;
+    case Position.Right:
+      sx = sourceX + sourceWidth;
+      sy = sourceY + sourceHeight / 2;
       break;
   }
 
@@ -92,12 +144,24 @@ export function getEdgeParams(sourceNode: any, targetNode: any) {
       tx = targetX + targetWidth / 2;
       ty = targetY + targetHeight;
       break;
-    default:
-      // Fallback to top for any unexpected case
-      tx = targetX + targetWidth / 2;
-      ty = targetY;
+    case Position.Left:
+      tx = targetX;
+      ty = targetY + targetHeight / 2;
+      break;
+    case Position.Right:
+      tx = targetX + targetWidth;
+      ty = targetY + targetHeight / 2;
       break;
   }
 
-  return { sx, sy, tx, ty, sourcePos: sourceHandlePos, targetPos: targetHandlePos };
+  return {
+    sx,
+    sy,
+    tx,
+    ty,
+    sourcePos: sourceHandlePos,
+    targetPos: targetHandlePos,
+    sourceHandleId,
+    targetHandleId
+  };
 }

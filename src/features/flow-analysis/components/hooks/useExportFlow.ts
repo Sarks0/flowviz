@@ -24,6 +24,8 @@ export const useExportFlow = (data: ExportData) => {
     try {
       const dataUrl = await toPng(element, {
         backgroundColor: '#0d1117',
+        pixelRatio: 3, // High-resolution export (3x) for crisp images when zoomed
+        quality: 1.0,
         width: element.offsetWidth,
         height: element.offsetHeight,
         style: {
